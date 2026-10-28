@@ -15,9 +15,9 @@ mkdir -p "${BUILD_DIR}"
 "${CXX}" \
     -std=c++17 -O2 -Wall -Wextra -Werror \
     -I"${AX8860_BSP}/include" \
-    "${ROOT_DIR}/src/ax_demo_add.cc" \
+    "${ROOT_DIR}/src/ax_dsl_runner.cc" \
     -L"${AX8860_BSP}/lib" -Wl,-rpath-link,"${AX8860_BSP}/lib" \
     -lax_engine -lax_sys -lpthread \
-    -o "${BUILD_DIR}/ax_demo_add"
+    -o "${BUILD_DIR}/ax_dsl_runner"
 
-echo "built ${BUILD_DIR}/ax_demo_add"
+echo "built ${BUILD_DIR}/ax_dsl_runner"

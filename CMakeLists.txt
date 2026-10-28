@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.13)
 
-project(ax_dsl_demo_add LANGUAGES CXX)
+project(ax_dsl_samples LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -21,9 +21,9 @@ endif()
 
 find_package(Threads REQUIRED)
 
-add_executable(ax_demo_add src/ax_demo_add.cc)
-target_include_directories(ax_demo_add PRIVATE "${AX8860_BSP}/include")
-target_link_directories(ax_demo_add PRIVATE "${AX8860_BSP}/lib")
-target_link_options(ax_demo_add PRIVATE "-Wl,-rpath-link,${AX8860_BSP}/lib")
-target_link_libraries(ax_demo_add PRIVATE ax_engine ax_sys Threads::Threads)
+add_executable(ax_dsl_runner src/ax_dsl_runner.cc)
+target_include_directories(ax_dsl_runner PRIVATE "${AX8860_BSP}/include")
+target_link_directories(ax_dsl_runner PRIVATE "${AX8860_BSP}/lib")
+target_link_options(ax_dsl_runner PRIVATE "-Wl,-rpath-link,${AX8860_BSP}/lib")
+target_link_libraries(ax_dsl_runner PRIVATE ax_engine ax_sys Threads::Threads)
 

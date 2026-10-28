@@ -13,7 +13,49 @@
 namespace {
 
 constexpr AX_U32 kCmmAlignSize = 128;
-constexpr const char* kCmmToken = "ax_demo_add";
+constexpr const char* kCmmToken = "ax_dsl_runner";
+constexpr float kMaxError = 1e-4f;
+
+enum class Op {
+    Add,
+    Mul,
+    Gelu,
+    Sigmoid,
+    Softmax,
+};
+
+bool parse_op(const char* text, Op& op) {
+    if (std::strcmp(text, "add") == 0) {
+        op = Op::Add;
+    } else if (std::strcmp(text, "mul") == 0) {
+        op = Op::Mul;
+    } else if (std::strcmp(text, "gelu") == 0) {
+        op = Op::Gelu;
+    } else if (std::strcmp(text, "sigmoid") == 0) {
+        op = Op::Sigmoid;
+    } else if (std::strcmp(text, "softmax") == 0) {
+        op = Op::Softmax;
+    } else {
+        return false;
+    }
+    return true;
+}
+
+const char* op_name(Op op) {
+    switch (op) {
+    case Op::Add:
+        return "add";
+    case Op::Mul:
+        return "mul";
+    case Op::Gelu:
+        return "gelu";
+    case Op::Sigmoid:
+        return "sigmoid";
+    case Op::Softmax:
+        return "softmax";
+    }
+    return "unknown";
+}
 
 bool read_file(const char* path, std::vector<char>& data) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -28,15 +70,6 @@ bool read_file(const char* path, std::vector<char>& data) {
     file.seekg(0, std::ios::beg);
     data.resize(static_cast<size_t>(size));
     return static_cast<bool>(file.read(data.data(), size));
-}
-
-int find_io(const AX_ENGINE_IOMETA_T* metas, AX_U32 count, const char* name) {
-    for (AX_U32 i = 0; i < count; ++i) {
-        if (metas[i].pName != nullptr && std::strcmp(metas[i].pName, name) == 0) {
-            return static_cast<int>(i);
-        }
-    }
-    return -1;
 }
 
 const char* dtype_name(AX_ENGINE_DATA_TYPE_T dtype) {
@@ -88,13 +121,17 @@ void print_error(const char* api, AX_S32 ret) {
     std::fprintf(stderr, "%s failed: 0x%08x\n", api, static_cast<unsigned>(ret));
 }
 
-class AxDemo {
-public:
-    AxDemo() = default;
-    ~AxDemo() { release(); }
+void print_usage(const char* program) {
+    std::fprintf(stderr, "Usage: %s --op <add|mul|gelu|sigmoid|softmax> <model.axmodel>\n", program);
+}
 
-    AxDemo(const AxDemo&) = delete;
-    AxDemo& operator=(const AxDemo&) = delete;
+class AxDslRunner {
+public:
+    explicit AxDslRunner(Op op) : op_(op) {}
+    ~AxDslRunner() { release(); }
+
+    AxDslRunner(const AxDslRunner&) = delete;
+    AxDslRunner& operator=(const AxDslRunner&) = delete;
 
     bool init_system() {
         // Initialize AX system services: CMM allocator, device access, and logging.
@@ -117,6 +154,7 @@ public:
         engine_initialized_ = true;
 
         std::printf("AX Engine version: %s\n", AX_ENGINE_GetVersion());
+        std::printf("sample: %s\n", op_name(op_));
         return true;
     }
 
@@ -154,31 +192,41 @@ public:
         }
         print_io_info(*io_info_);
 
-        // Locate the two inputs and one output used by this demo.
-        input_a_ = find_io(io_info_->pInputs, io_info_->nInputSize, "a");
-        input_b_ = find_io(io_info_->pInputs, io_info_->nInputSize, "b");
-        output_ = find_io(io_info_->pOutputs, io_info_->nOutputSize, "output");
-        if (input_a_ < 0 || input_b_ < 0 || output_ < 0) {
-            std::fprintf(stderr, "expected inputs a, b and output output in AXModel\n");
+        // Validate the IO contract used by the selected sample.
+        const bool binary = op_ == Op::Add || op_ == Op::Mul;
+        const AX_U32 expected_inputs = binary ? 2 : 1;
+        if (io_info_->nInputSize != expected_inputs || io_info_->nOutputSize != 1) {
+            std::fprintf(stderr, "sample %s expects %u input(s) and 1 output\n", op_name(op_), expected_inputs);
             return false;
         }
 
-        const AX_ENGINE_IOMETA_T& meta_a = io_info_->pInputs[input_a_];
-        const AX_ENGINE_IOMETA_T& meta_b = io_info_->pInputs[input_b_];
-        const AX_ENGINE_IOMETA_T& meta_out = io_info_->pOutputs[output_];
-        if (meta_a.eDataType != AX_ENGINE_DT_FLOAT32 || meta_b.eDataType != AX_ENGINE_DT_FLOAT32 ||
-            meta_out.eDataType != AX_ENGINE_DT_FLOAT32) {
-            std::fprintf(stderr, "this demo expects float32 input and output tensors\n");
+        const AX_ENGINE_IOMETA_T& meta_out = io_info_->pOutputs[0];
+        if (meta_out.eDataType != AX_ENGINE_DT_FLOAT32 || meta_out.nSize % sizeof(float) != 0) {
+            std::fprintf(stderr, "sample %s expects a float32 output tensor\n", op_name(op_));
             return false;
         }
-        if (meta_a.nSize != meta_b.nSize || meta_a.nSize != meta_out.nSize ||
-            meta_a.nSize % sizeof(float) != 0) {
-            std::fprintf(stderr, "unexpected tensor sizes: a=%u b=%u output=%u\n", meta_a.nSize, meta_b.nSize,
-                         meta_out.nSize);
-            return false;
+        element_count_ = meta_out.nSize / sizeof(float);
+
+        for (AX_U32 i = 0; i < io_info_->nInputSize; ++i) {
+            const AX_ENGINE_IOMETA_T& meta_in = io_info_->pInputs[i];
+            if (meta_in.eDataType != AX_ENGINE_DT_FLOAT32 || meta_in.nSize != meta_out.nSize) {
+                std::fprintf(stderr, "sample %s expects float32 input/output tensors with equal sizes\n",
+                             op_name(op_));
+                return false;
+            }
         }
 
-        element_count_ = meta_a.nSize / sizeof(float);
+        if (op_ == Op::Softmax) {
+            if (meta_out.nShapeSize == 0) {
+                std::fprintf(stderr, "softmax requires a known output shape\n");
+                return false;
+            }
+            last_dim_ = static_cast<size_t>(meta_out.pShape[meta_out.nShapeSize - 1]);
+            if (last_dim_ == 0 || element_count_ % last_dim_ != 0) {
+                std::fprintf(stderr, "invalid softmax shape\n");
+                return false;
+            }
+        }
         return true;
     }
 
@@ -204,12 +252,13 @@ public:
     }
 
     bool fill_inputs() {
-        // Fill the CMM input buffers with deterministic test data.
-        float* a = static_cast<float*>(io_.pInputs[input_a_].pVirAddr);
-        float* b = static_cast<float*>(io_.pInputs[input_b_].pVirAddr);
-        for (size_t i = 0; i < element_count_; ++i) {
-            a[i] = static_cast<float>(i % 1024) * 0.001f;
-            b[i] = static_cast<float>(i % 1024) * 0.002f;
+        // Fill each input with deterministic values.
+        for (AX_U32 i = 0; i < io_.nInputSize; ++i) {
+            float* data = static_cast<float*>(io_.pInputs[i].pVirAddr);
+            const float scale = static_cast<float>(i + 1) * 0.001f;
+            for (size_t j = 0; j < element_count_; ++j) {
+                data[j] = static_cast<float>(j % 1024) * scale;
+            }
         }
         return true;
     }
@@ -225,21 +274,52 @@ public:
     }
 
     bool verify() const {
-        // Compare the NPU output with the CPU reference a + b.
-        const float* a = static_cast<const float*>(io_.pInputs[input_a_].pVirAddr);
-        const float* b = static_cast<const float*>(io_.pInputs[input_b_].pVirAddr);
-        const float* output = static_cast<const float*>(io_.pOutputs[output_].pVirAddr);
-
+        // Compare the NPU output with a CPU reference for the selected sample.
+        const float* output = static_cast<const float*>(io_.pOutputs[0].pVirAddr);
         float max_error = 0.0f;
-        for (size_t i = 0; i < element_count_; ++i) {
-            max_error = std::max(max_error, std::fabs(output[i] - (a[i] + b[i])));
+
+        if (op_ == Op::Add || op_ == Op::Mul) {
+            const float* a = static_cast<const float*>(io_.pInputs[0].pVirAddr);
+            const float* b = static_cast<const float*>(io_.pInputs[1].pVirAddr);
+            for (size_t i = 0; i < element_count_; ++i) {
+                const float expected = op_ == Op::Add ? a[i] + b[i] : a[i] * b[i];
+                max_error = std::max(max_error, std::fabs(output[i] - expected));
+            }
+        } else if (op_ == Op::Gelu || op_ == Op::Sigmoid) {
+            const float* x = static_cast<const float*>(io_.pInputs[0].pVirAddr);
+            constexpr double kInvSqrt2 = 0.70710678118654752440;
+            for (size_t i = 0; i < element_count_; ++i) {
+                const double value = static_cast<double>(x[i]);
+                const double expected = op_ == Op::Gelu
+                                            ? 0.5 * value * (1.0 + std::erf(value * kInvSqrt2))
+                                            : 1.0 / (1.0 + std::exp(-value));
+                max_error = std::max(max_error, std::fabs(output[i] - static_cast<float>(expected)));
+            }
+        } else {
+            const float* x = static_cast<const float*>(io_.pInputs[0].pVirAddr);
+            const size_t rows = element_count_ / last_dim_;
+            for (size_t row = 0; row < rows; ++row) {
+                const float* values = x + row * last_dim_;
+                const float row_max = *std::max_element(values, values + last_dim_);
+                double sum = 0.0;
+                for (size_t col = 0; col < last_dim_; ++col) {
+                    sum += std::exp(static_cast<double>(values[col] - row_max));
+                }
+                for (size_t col = 0; col < last_dim_; ++col) {
+                    const double expected = std::exp(static_cast<double>(values[col] - row_max)) / sum;
+                    max_error = std::max(max_error, std::fabs(output[row * last_dim_ + col] -
+                                                              static_cast<float>(expected)));
+                }
+            }
         }
-        if (max_error > 1e-5f) {
+
+        if (max_error > kMaxError) {
             std::fprintf(stderr, "verification failed, max error: %g\n", max_error);
             return false;
         }
 
-        std::printf("AX Engine demo add: PASS (%zu elements, max error %.6g)\n", element_count_, max_error);
+        std::printf("AX Engine %s sample: PASS (%zu elements, max error %.6g)\n", op_name(op_),
+                    element_count_, max_error);
         return true;
     }
 
@@ -293,14 +373,13 @@ private:
         }
     }
 
+    Op op_;
     std::vector<char> model_buffer_;
     AX_ENGINE_HANDLE handle_ = nullptr;
     AX_ENGINE_IO_INFO_T* io_info_ = nullptr;
     AX_ENGINE_IO_T io_{};
-    int input_a_ = -1;
-    int input_b_ = -1;
-    int output_ = -1;
     size_t element_count_ = 0;
+    size_t last_dim_ = 0;
     bool sys_initialized_ = false;
     bool engine_initialized_ = false;
 };
@@ -308,11 +387,33 @@ private:
 } // namespace
 
 int main(int argc, char** argv) {
-    const char* model_path = argc > 1 ? argv[1] : "models/demo_add_ax8860.axmodel";
+    const char* op_text = nullptr;
+    const char* model_path = nullptr;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--op") == 0 && i + 1 < argc) {
+            op_text = argv[++i];
+        } else if (model_path == nullptr && argv[i][0] != '-') {
+            model_path = argv[i];
+        } else {
+            print_usage(argv[0]);
+            return 1;
+        }
+    }
+    if (op_text == nullptr || model_path == nullptr) {
+        print_usage(argv[0]);
+        return 1;
+    }
 
-    AxDemo demo;
-    if (!demo.init_system() || !demo.load_model(model_path) || !demo.allocate_io() || !demo.fill_inputs() ||
-        !demo.infer() || !demo.verify()) {
+    Op op;
+    if (!parse_op(op_text, op)) {
+        std::fprintf(stderr, "unsupported op: %s\n", op_text);
+        print_usage(argv[0]);
+        return 1;
+    }
+
+    AxDslRunner runner(op);
+    if (!runner.init_system() || !runner.load_model(model_path) || !runner.allocate_io() ||
+        !runner.fill_inputs() || !runner.infer() || !runner.verify()) {
         return 1;
     }
     return 0;
