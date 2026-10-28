@@ -1,4 +1,4 @@
-"""AXDSL elementwise add sample."""
+"""AXDSL elementwise add demo: add two vectors."""
 
 import torch
 
@@ -6,45 +6,41 @@ import axnn.dsl as ax
 from samples._common import export_kernel
 
 
-TILE_SIZE = [128, 256]
-SHAPE = (256, 512)
+SHAPE = (8,)
+A_VALUES = (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0)
+B_VALUES = (10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0)
 
 
 @ax.builder(run_mode=ax.RunMode.PYRUN)
-def add_kernel(a, b, output, tile_size):
-    offset_0 = ax.program_id(0) * tile_size[0]
-    offset_1 = ax.program_id(1) * tile_size[1]
-    tile = (
-        slice(offset_0, offset_0 + tile_size[0]),
-        slice(offset_1, offset_1 + tile_size[1]),
-    )
-
-    a_tile = ax.dsl.load(a[tile])
-    b_tile = ax.dsl.load(b[tile])
-    result = ax.dsl.add(a_tile, b_tile)
-    ax.dsl.store(x=result, r=output[tile])
+def add_kernel(a, b, output):
+    a_values = ax.dsl.load(a)
+    b_values = ax.dsl.load(b)
+    result = ax.dsl.add(a_values, b_values)
+    ax.dsl.store(x=result, r=output)
     return output
 
 
 def run(a, b, output):
-    grid = (SHAPE[0] // TILE_SIZE[0], SHAPE[1] // TILE_SIZE[1])
-    return add_kernel[grid, 1](a, b, output, TILE_SIZE)
+    return add_kernel[(1,), 1](a, b, output)
 
 
 def export_model(output_path):
     a = torch.empty(SHAPE, dtype=torch.float32)
     b = torch.empty(SHAPE, dtype=torch.float32)
     output = torch.empty(SHAPE, dtype=torch.float32)
-    grid = (SHAPE[0] // TILE_SIZE[0], SHAPE[1] // TILE_SIZE[1])
-    return export_kernel(add_kernel, output_path, (a, b, output, TILE_SIZE), grid)
+    return export_kernel(add_kernel, output_path, (a, b, output), (1,))
 
 
 def main():
     ax.init(chip_num=1, core_num=1)
-    a = torch.rand(SHAPE, dtype=torch.float32)
-    b = torch.rand(SHAPE, dtype=torch.float32)
+    a = torch.tensor(A_VALUES, dtype=torch.float32)
+    b = torch.tensor(B_VALUES, dtype=torch.float32)
     output = torch.empty_like(a)
     run(a, b, output)
+
+    print("a     =", a.tolist())
+    print("b     =", b.tolist())
+    print("a + b =", output.tolist())
     torch.testing.assert_close(output, a + b, atol=1e-5, rtol=1e-5)
     print("AXDSL add sample: PASS")
 

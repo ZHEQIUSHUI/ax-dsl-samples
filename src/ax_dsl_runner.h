@@ -15,10 +15,13 @@ struct SampleContext {
 };
 
 using VerifyFn = bool (*)(const SampleContext& context, float& max_error);
+using FillFn = void (*)(float* const* inputs, std::size_t element_count);
 
 struct SampleDefinition {
     const char* name;
     AX_U32 input_count;
+    std::size_t element_count;
+    FillFn fill;
     VerifyFn verify;
 };
 

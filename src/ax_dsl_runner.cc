@@ -80,6 +80,14 @@ void print_error(const char* api, AX_S32 ret) {
     std::fprintf(stderr, "%s failed: 0x%08x\n", api, static_cast<unsigned>(ret));
 }
 
+void print_values(const char* name, const float* values, std::size_t count) {
+    std::printf("%s: [", name != nullptr ? name : "<unnamed>");
+    for (std::size_t i = 0; i < count; ++i) {
+        std::printf("%s%.6g", i == 0 ? "" : ", ", values[i]);
+    }
+    std::printf("]\n");
+}
+
 class AxEngineRunner {
 public:
     explicit AxEngineRunner(const SampleDefinition& sample) : sample_(sample) {}
@@ -90,7 +98,7 @@ public:
 
     bool run(const char* model_path) {
         return init_system() && load_model(model_path) && allocate_io() && fill_inputs() &&
-               infer() && verify();
+               infer() && report() && verify();
     }
 
 private:
@@ -167,6 +175,11 @@ private:
             return false;
         }
         element_count_ = output_meta.nSize / sizeof(float);
+        if (element_count_ != sample_.element_count) {
+            std::fprintf(stderr, "sample %s expects %zu elements, model has %zu\n", sample_.name,
+                         sample_.element_count, element_count_);
+            return false;
+        }
 
         for (AX_U32 i = 0; i < io_info_->nInputSize; ++i) {
             const AX_ENGINE_IOMETA_T& input_meta = io_info_->pInputs[i];
@@ -203,14 +216,12 @@ private:
     }
 
     bool fill_inputs() {
-        // Fill each input with deterministic values.
+        // Fill each input with the values declared by the selected demo.
+        std::vector<float*> inputs(io_.nInputSize);
         for (AX_U32 i = 0; i < io_.nInputSize; ++i) {
-            float* data = static_cast<float*>(io_.pInputs[i].pVirAddr);
-            const float scale = static_cast<float>(i + 1) * 0.001f;
-            for (std::size_t j = 0; j < element_count_; ++j) {
-                data[j] = static_cast<float>(j % 1024) * scale;
-            }
+            inputs[i] = static_cast<float*>(io_.pInputs[i].pVirAddr);
         }
+        sample_.fill(inputs.data(), element_count_);
         return true;
     }
 
@@ -220,6 +231,19 @@ private:
         if (ret != 0) {
             print_error("AX_ENGINE_RunSync", ret);
             return false;
+        }
+        return true;
+    }
+
+    bool report() const {
+        // Print the actual input and output values used by this demo.
+        for (AX_U32 i = 0; i < io_.nInputSize; ++i) {
+            print_values(io_info_->pInputs[i].pName,
+                         static_cast<const float*>(io_.pInputs[i].pVirAddr), element_count_);
+        }
+        for (AX_U32 i = 0; i < io_.nOutputSize; ++i) {
+            print_values(io_info_->pOutputs[i].pName,
+                         static_cast<const float*>(io_.pOutputs[i].pVirAddr), element_count_);
         }
         return true;
     }

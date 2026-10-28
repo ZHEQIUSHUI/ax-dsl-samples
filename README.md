@@ -6,13 +6,28 @@ stays in one source file per sample. It does not use AXCL.
 
 ## Samples
 
-| Sample | Inputs | Output shape | Notes |
-| ------ | ------ | ------------ | ----- |
-| `add` | `a`, `b` float32 `256x512` | `256x512` | Elementwise add |
-| `mul` | `a`, `b` float32 `256x512` | `256x512` | Elementwise multiply |
-| `gelu` | `x` float32 `256x256` | `256x256` | GELU activation |
-| `sigmoid` | `x` float32 `256x256` | `256x256` | Sigmoid activation |
-| `softmax` | `x` float32 `256x256` | `256x256` | Softmax over the last dimension |
+Each sample is a worked example rather than a benchmark: it uses a tiny fixed input, applies one
+AXDSL operation, prints the result, and checks it against a CPU calculation. For example, `add`
+takes two eight-element vectors and produces `[11, 22, 33, 44, 55, 66, 77, 88]`.
+
+Every sample uses a small, readable float32 vector with 8 elements:
+
+```text
+A = [1, 2, 3, 4, 5, 6, 7, 8]
+B = [10, 20, 30, 40, 50, 60, 70, 80]
+X = [-3, -2, -1, 0, 1, 2, 3, 4]
+```
+
+| Sample | Demonstration |
+| ------ | ------------- |
+| `add` | `A + B` |
+| `mul` | `A * B` |
+| `gelu` | `GELU(X)` |
+| `sigmoid` | `sigmoid(X)` |
+| `softmax` | Convert the scores in `X` into probabilities |
+
+The PYRUN programs and the board executables print these inputs and the actual output values, so
+the operation can be understood without inspecting generated model data.
 
 The generated AXModels are stored in `models/` and can be used directly. They are also reproducible
 with `export_samples.py`.
@@ -45,8 +60,8 @@ ax-dsl-samples/
 ```
 
 Each Python sample module defines a PYRUN kernel for local correctness checking and an
-`export_model()` function used by the exporter. Each C++ sample adds its input contract and CPU
-reference through `src/samples/<sample>.cc`.
+`export_model()` function used by the exporter. Each C++ sample declares its demo input values and
+CPU reference through `src/samples/<sample>.cc`.
 
 ## Prerequisites
 
@@ -159,17 +174,20 @@ Run each sample with its matching executable:
 ./ax_dsl_softmax models/demo_softmax_ax8860.axmodel
 ```
 
-Example output:
+The executable prints the model metadata, the input vectors, and the output vector:
 
 ```text
 AX Engine version: 3.0.001
 sample: add
 inputs: 2
-  [0] a FLOAT32 256x512 (524288 bytes)
-  [1] b FLOAT32 256x512 (524288 bytes)
+  [0] a FLOAT32 8 (32 bytes)
+  [1] b FLOAT32 8 (32 bytes)
 outputs: 1
-  [0] output FLOAT32 256x512 (524288 bytes)
-AX Engine add sample: PASS (131072 elements, max error 0)
+  [0] output FLOAT32 8 (32 bytes)
+a: [1, 2, 3, 4, 5, 6, 7, 8]
+b: [10, 20, 30, 40, 50, 60, 70, 80]
+output: [11, 22, 33, 44, 55, 66, 77, 88]
+AX Engine add sample: PASS (8 elements, max error 0)
 ```
 
 ## C++ Runner Structure
@@ -179,8 +197,9 @@ AX Engine add sample: PASS (131072 elements, max error 0)
 - `init_system()`: `AX_SYS_Init` for system/CMM services, then `AX_ENGINE_Init` for the NPU.
 - `load_model()`: read the AXModel, create the handle/context, query and validate IO metadata.
 - `allocate_io()`: allocate CMM buffers for every model input and output.
-- `fill_inputs()`: fill deterministic input data.
+- `fill_inputs()`: copy the sample's readable demo values into the model inputs.
 - `infer()`: run `AX_ENGINE_RunSync`.
+- `report()`: print the actual input and NPU output values.
 - `verify()`: invoke the CPU reference supplied by the selected sample.
 - `release()`: free CMM buffers and finalize the engine/system in reverse order.
 

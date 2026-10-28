@@ -1,16 +1,25 @@
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 
 #include "ax_dsl_runner.h"
 
+// Demo: convert eight scores into probabilities and verify the NPU result.
 namespace {
 
 constexpr AX_U32 kInputCount = 1;
+constexpr AX_U32 kElementCount = 8;
+constexpr std::array<float, kElementCount> kX = {-3.0f, -2.0f, -1.0f, 0.0f,
+                                                  1.0f,  2.0f,  3.0f,  4.0f};
+
+void fill(float* const* inputs, std::size_t element_count) {
+    std::copy_n(kX.data(), element_count, inputs[0]);
+}
 
 bool verify(const ax_dsl::SampleContext& context, float& max_error) {
-    if (!ax_dsl::has_shape(context.output_meta, {256, 256})) {
-        std::fprintf(stderr, "softmax expects output shape 256x256\n");
+    if (!ax_dsl::has_shape(context.output_meta, {kElementCount})) {
+        std::fprintf(stderr, "softmax expects an 8-element vector\n");
         return false;
     }
 
@@ -34,7 +43,7 @@ bool verify(const ax_dsl::SampleContext& context, float& max_error) {
     return true;
 }
 
-const ax_dsl::SampleDefinition kSample{"softmax", kInputCount, verify};
+const ax_dsl::SampleDefinition kSample{"softmax", kInputCount, kElementCount, fill, verify};
 
 } // namespace
 
