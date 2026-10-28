@@ -19,17 +19,17 @@ env:
   TOOLCHAIN_URL: https://gitlab.arm.com/api/v4/projects/tooling%2Fgnu-toolchains-for-arm/packages/generic/gnu-toolchain/13.3.rel1/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz
   BSP_RELEASE_TAG: bsp
   BSP_ASSET: ax8860_arm64_glibc_axengine_dev.zip
-  BSP_SHA256: ebbb66065a57bdbb52d58cea93b32986dcfc4601c262161f7051a40dae00b3e
+  BSP_SHA256: ebbbb66065a57bdbb52d58cea93b32986dcfc4601c262161f7051a40dae00b3e
 
 jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Cache Arm GNU Toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz
           key: arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu
@@ -95,7 +95,7 @@ jobs:
         run: file build/ax_dsl_*
 
       - name: Upload executables
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ax-dsl-samples-ax8860
           path: |
