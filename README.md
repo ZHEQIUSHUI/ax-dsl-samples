@@ -124,7 +124,8 @@ Its SHA256 is:
 ## Continuous Integration
 
 `.github/workflows/build.yml` downloads the pinned Arm GNU Toolchain and the minimal AX8860 BSP,
-builds every sample with both `build.sh` and CMake, and uploads the five executables as an artifact.
+builds every sample with both `build.sh` and CMake, and verifies the resulting executables. It does
+not upload build artifacts.
 
 The workflow downloads the BSP bundle from this release asset:
 

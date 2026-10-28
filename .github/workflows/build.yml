@@ -93,15 +93,3 @@ jobs:
 
       - name: Verify executable architecture
         run: file build/ax_dsl_*
-
-      - name: Upload executables
-        uses: actions/upload-artifact@v7
-        with:
-          name: ax-dsl-samples-ax8860
-          path: |
-            build/ax_dsl_add
-            build/ax_dsl_mul
-            build/ax_dsl_gelu
-            build/ax_dsl_sigmoid
-            build/ax_dsl_softmax
-          if-no-files-found: error
