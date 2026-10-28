@@ -21,6 +21,7 @@ with `export_samples.py`.
 
 ```text
 ax-dsl-samples/
+├── .github/workflows/build.yml
 ├── export_samples.py
 ├── samples/
 │   ├── add.py
@@ -50,8 +51,9 @@ reference through `src/samples/<sample>.cc`.
 ## Prerequisites
 
 - NPU codebase environment for importing `axnn.dsl`
-- AX8860 BSP with `include/ax_engine_api.h`, `lib/libax_engine.so`, and `lib/libax_sys.so`
-- Arm GNU Toolchain 13.2 or another aarch64 toolchain with glibc >= 2.38
+- AX8860 BSP with `include/ax_engine_api.h`, `lib/libax_engine.so`, `lib/libax_sys.so`, and
+  `lib/libax_interpreter.so`
+- Arm GNU Toolchain 13.3.rel1 or another aarch64 toolchain with glibc >= 2.38
 
 ## Run A Sample With PYRUN
 
@@ -82,7 +84,7 @@ Set the BSP directory and put the toolchain on `PATH`:
 
 ```bash
 export AX8860_BSP=/path/to/ax8860_bsp/arm64_glibc
-export PATH=/path/to/arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu/bin:$PATH
+export PATH=/path/to/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu/bin:$PATH
 ./build.sh
 ```
 
@@ -106,6 +108,33 @@ cmake \
   -DAX8860_BSP="${AX8860_BSP}"
 cmake --build build -j
 ```
+
+The CI toolchain package for an x86_64 Linux host is:
+
+```text
+https://gitlab.arm.com/api/v4/projects/tooling%2Fgnu-toolchains-for-arm/packages/generic/gnu-toolchain/13.3.rel1/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz
+```
+
+Its SHA256 is:
+
+```text
+322f0b4482fc0d9fa0bb468134841f08d8c554c54ff5aa29a13a7a24bf7e1eb5
+```
+
+## Continuous Integration
+
+`.github/workflows/build.yml` downloads the pinned Arm GNU Toolchain and the minimal AX8860 BSP,
+builds every sample with both `build.sh` and CMake, and uploads the five executables as an artifact.
+
+The workflow expects the BSP bundle at this release asset path:
+
+```text
+https://github.com/ZHEQIUSHUI/ax-dsl-demo-add/releases/download/bsp-v1/ax8860_arm64_glibc_axengine_dev.zip
+```
+
+Upload `dist/ax8860_arm64_glibc_axengine_dev.zip` to the `bsp-v1` release before the first workflow
+run. The expected bundle SHA256 is
+`ebbbb66065a57bdbb52d58cea93b32986dcfc4601c262161f7051a40dae00b3e`.
 
 ## Run On The Board
 
