@@ -62,8 +62,10 @@ jobs:
             echo "::error::BSP download failed: ${output}"
             exit 1
           fi
-          if ! echo "$BSP_SHA256  $archive" | sha256sum -c -; then
-            echo "::error::BSP checksum mismatch"
+          actual_sha256=$(sha256sum "$archive" | cut -d' ' -f1)
+          actual_size=$(stat -c %s "$archive")
+          if [[ "$actual_sha256" != "$BSP_SHA256" ]]; then
+            echo "::error::BSP checksum mismatch: expected=${BSP_SHA256} actual=${actual_sha256} size=${actual_size}"
             exit 1
           fi
           if ! unzip -q "$archive" -d "$RUNNER_TEMP/ax8860-bsp"; then
