@@ -1,7 +1,8 @@
 # AXDSL Samples for AX8860
 
-This project contains small AXDSL samples, exports them as AX8860 AXModels, and runs them with one
-shared AX Engine C++ runner. It does not use AXCL.
+This project contains small AXDSL samples, exports them as AX8860 AXModels, and runs each one with
+its own AX Engine C++ executable. The lifecycle code is shared, while model-specific verification
+stays in one source file per sample. It does not use AXCL.
 
 ## Samples
 
@@ -27,15 +28,24 @@ ax-dsl-samples/
 │   ├── gelu.py
 │   ├── sigmoid.py
 │   └── softmax.py
-├── src/ax_dsl_runner.cc
+├── src/
+│   ├── ax_dsl_runner.h
+│   ├── ax_dsl_runner.cc
+│   └── samples/
+│       ├── add.cc
+│       ├── mul.cc
+│       ├── gelu.cc
+│       ├── sigmoid.cc
+│       └── softmax.cc
 ├── models/demo_*_ax8860.axmodel
 ├── CMakeLists.txt
 ├── cmake/aarch64-none-linux-gnu.toolchain.cmake
 └── build.sh
 ```
 
-Each sample module defines a PYRUN kernel for local correctness checking and an `export_model()`
-function used by the exporter.
+Each Python sample module defines a PYRUN kernel for local correctness checking and an
+`export_model()` function used by the exporter. Each C++ sample adds its input contract and CPU
+reference through `src/samples/<sample>.cc`.
 
 ## Prerequisites
 
@@ -76,7 +86,15 @@ export PATH=/path/to/arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu/b
 ./build.sh
 ```
 
-The executable is written to `build/ax_dsl_runner`.
+The executables are written to `build/ax_dsl_<sample>`:
+
+```text
+build/ax_dsl_add
+build/ax_dsl_mul
+build/ax_dsl_gelu
+build/ax_dsl_sigmoid
+build/ax_dsl_softmax
+```
 
 CMake is also supported:
 
@@ -91,23 +109,25 @@ cmake --build build -j
 
 ## Run On The Board
 
-Copy the runner and one or more models to the board:
+Copy the executables and models to the board:
 
 ```bash
-scp build/ax_dsl_runner models/*.axmodel root@<board-ip>:/tmp/ax-dsl-samples/
+ssh root@<board-ip> 'mkdir -p /tmp/ax-dsl-samples/models'
+scp build/ax_dsl_* root@<board-ip>:/tmp/ax-dsl-samples/
+scp models/*.axmodel root@<board-ip>:/tmp/ax-dsl-samples/models/
 ssh root@<board-ip>
 cd /tmp/ax-dsl-samples
 export LD_LIBRARY_PATH=/opt/lib:$LD_LIBRARY_PATH
 ```
 
-Run a specific sample with `--op`:
+Run each sample with its matching executable:
 
 ```bash
-./ax_dsl_runner --op add models/demo_add_ax8860.axmodel
-./ax_dsl_runner --op mul models/demo_mul_ax8860.axmodel
-./ax_dsl_runner --op gelu models/demo_gelu_ax8860.axmodel
-./ax_dsl_runner --op sigmoid models/demo_sigmoid_ax8860.axmodel
-./ax_dsl_runner --op softmax models/demo_softmax_ax8860.axmodel
+./ax_dsl_add models/demo_add_ax8860.axmodel
+./ax_dsl_mul models/demo_mul_ax8860.axmodel
+./ax_dsl_gelu models/demo_gelu_ax8860.axmodel
+./ax_dsl_sigmoid models/demo_sigmoid_ax8860.axmodel
+./ax_dsl_softmax models/demo_softmax_ax8860.axmodel
 ```
 
 Example output:
@@ -125,13 +145,16 @@ AX Engine add sample: PASS (131072 elements, max error 0)
 
 ## C++ Runner Structure
 
-`src/ax_dsl_runner.cc` keeps the AX Engine lifecycle in small, explicit steps:
+`src/ax_dsl_runner.cc` keeps the shared AX Engine lifecycle in small, explicit steps:
 
 - `init_system()`: `AX_SYS_Init` for system/CMM services, then `AX_ENGINE_Init` for the NPU.
 - `load_model()`: read the AXModel, create the handle/context, query and validate IO metadata.
 - `allocate_io()`: allocate CMM buffers for every model input and output.
 - `fill_inputs()`: fill deterministic input data.
 - `infer()`: run `AX_ENGINE_RunSync`.
-- `verify()`: compare the NPU output against a CPU reference selected by `--op`.
+- `verify()`: invoke the CPU reference supplied by the selected sample.
 - `release()`: free CMM buffers and finalize the engine/system in reverse order.
+
+`src/samples/<sample>.cc` contains only that sample's input count, output shape check, CPU
+reference, and executable entry point.
 

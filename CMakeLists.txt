@@ -21,9 +21,18 @@ endif()
 
 find_package(Threads REQUIRED)
 
-add_executable(ax_dsl_runner src/ax_dsl_runner.cc)
-target_include_directories(ax_dsl_runner PRIVATE "${AX8860_BSP}/include")
-target_link_directories(ax_dsl_runner PRIVATE "${AX8860_BSP}/lib")
-target_link_options(ax_dsl_runner PRIVATE "-Wl,-rpath-link,${AX8860_BSP}/lib")
-target_link_libraries(ax_dsl_runner PRIVATE ax_engine ax_sys Threads::Threads)
+set(AX_DSL_SAMPLES add mul gelu sigmoid softmax)
+
+foreach(sample IN LISTS AX_DSL_SAMPLES)
+    set(target "ax_dsl_${sample}")
+    add_executable("${target}" src/ax_dsl_runner.cc "src/samples/${sample}.cc")
+    target_include_directories("${target}" PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${AX8860_BSP}/include"
+    )
+    target_link_directories("${target}" PRIVATE "${AX8860_BSP}/lib")
+    target_link_options("${target}" PRIVATE "-Wl,-rpath-link,${AX8860_BSP}/lib")
+    target_compile_options("${target}" PRIVATE -Wall -Wextra -Werror)
+    target_link_libraries("${target}" PRIVATE ax_engine ax_sys Threads::Threads)
+endforeach()
 
