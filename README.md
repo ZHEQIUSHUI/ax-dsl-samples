@@ -126,14 +126,13 @@ Its SHA256 is:
 `.github/workflows/build.yml` downloads the pinned Arm GNU Toolchain and the minimal AX8860 BSP,
 builds every sample with both `build.sh` and CMake, and uploads the five executables as an artifact.
 
-The workflow expects the BSP bundle at this release asset path:
+The workflow downloads the BSP bundle from this release asset:
 
 ```text
-https://github.com/ZHEQIUSHUI/ax-dsl-demo-add/releases/download/bsp-v1/ax8860_arm64_glibc_axengine_dev.zip
+https://github.com/ZHEQIUSHUI/ax-dsl-samples/releases/download/bsp/ax8860_arm64_glibc_axengine_dev.zip
 ```
 
-Upload `dist/ax8860_arm64_glibc_axengine_dev.zip` to the `bsp-v1` release before the first workflow
-run. The expected bundle SHA256 is
+The expected bundle SHA256 is
 `ebbbb66065a57bdbb52d58cea93b32986dcfc4601c262161f7051a40dae00b3e`.
 
 ## Run On The Board
