@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILD_DIR="${ROOT_DIR}/build"
+CXX="${CXX:-aarch64-none-linux-gnu-g++}"
+
+if [[ -z "${AX8860_BSP:-}" ]]; then
+    echo "Set AX8860_BSP to the AX8860 arm64_glibc BSP directory" >&2
+    exit 1
+fi
+
+mkdir -p "${BUILD_DIR}"
+
+"${CXX}" \
+    -std=c++17 -O2 -Wall -Wextra -Werror \
+    -I"${AX8860_BSP}/include" \
+    "${ROOT_DIR}/src/ax_demo_add.cc" \
+    -L"${AX8860_BSP}/lib" -Wl,-rpath-link,"${AX8860_BSP}/lib" \
+    -lax_engine -lax_sys -lpthread \
+    -o "${BUILD_DIR}/ax_demo_add"
+
+echo "built ${BUILD_DIR}/ax_demo_add"
