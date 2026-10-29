@@ -60,8 +60,8 @@ ax-dsl-samples/
 ```
 
 Each Python sample module defines a PYRUN kernel for local correctness checking and an
-`export_model()` function used by the exporter. Each C++ sample declares its demo input values and
-CPU reference through `src/samples/<sample>.cc`.
+`export_model()` function used by the exporter. Each C++ sample has its own `main()` with the full
+board-side flow from initialization through printing the result.
 
 ## Prerequisites
 
@@ -178,7 +178,6 @@ The executable prints the model metadata, the input vectors, and the output vect
 
 ```text
 AX Engine version: 3.0.001
-sample: add
 inputs: 2
   [0] a FLOAT32 8 (32 bytes)
   [1] b FLOAT32 8 (32 bytes)
@@ -186,23 +185,24 @@ outputs: 1
   [0] output FLOAT32 8 (32 bytes)
 a: [1, 2, 3, 4, 5, 6, 7, 8]
 b: [10, 20, 30, 40, 50, 60, 70, 80]
-output: [11, 22, 33, 44, 55, 66, 77, 88]
+a + b: [11, 22, 33, 44, 55, 66, 77, 88]
 AX Engine add sample: PASS (8 elements, max error 0)
 ```
 
 ## C++ Runner Structure
 
-`src/ax_dsl_runner.cc` keeps the shared AX Engine lifecycle in small, explicit steps:
+`src/ax_dsl_runner.cc` is a small wrapper around the AX Engine APIs. Each sample's `main()` calls
+the wrapper directly, in this order:
 
-- `init_system()`: `AX_SYS_Init` for system/CMM services, then `AX_ENGINE_Init` for the NPU.
-- `load_model()`: read the AXModel, create the handle/context, query and validate IO metadata.
+- `init()`: `AX_SYS_Init` for system/CMM services, then `AX_ENGINE_Init` for the NPU.
+- `load_model()`: read the AXModel, create the handle/context, and query the IO metadata.
 - `allocate_io()`: allocate CMM buffers for every model input and output.
-- `fill_inputs()`: copy the sample's readable demo values into the model inputs.
-- `infer()`: run `AX_ENGINE_RunSync`.
-- `report()`: print the actual input and NPU output values.
-- `verify()`: invoke the CPU reference supplied by the selected sample.
+- `input(i)`: return the writable buffer for model input `i`, so the sample can copy its data in.
+- `run()`: call `AX_ENGINE_RunSync`.
+- `output(i)`: return the result buffer for model output `i`, which the sample prints.
 - `release()`: free CMM buffers and finalize the engine/system in reverse order.
 
-`src/samples/<sample>.cc` contains only that sample's input count, output shape check, CPU
-reference, and executable entry point.
+`src/samples/<sample>.cc` contains the complete example: input values, the six lifecycle steps in
+`main()`, result printing, and the CPU reference check. There is no callback registration or
+CLI framework between the sample and the AX Engine calls.
 
